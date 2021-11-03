@@ -2,29 +2,27 @@ class Form
 {
     // Double click protected
     isFormProcessed = false
-    element = null
+    form = null
     fields = {}
     args = {}
 
-    constructor(element, FieldTypeList, args = {})
+    constructor(form, FieldTypeList, args = {})
     {
         this.args = {
-            field: 'label',
-            error: '.message',
+            beforeSubmit: () => { console.log('@todo start preloader') },
+            afterSubmit: () => { console.log('@todo stop preloader') },
+            success: response => console.log('@todo add success behavior') || true,
+            fail: response => {},
             ...args
         }
 
-        this.element = element
+        this.form = form
         for (const [type, selector] of Object.entries(FieldTypeList.selectors)) {
-            this.fields[type] = Array.from(element.querySelectorAll(selector)).map(el => {
-                const fieldEl = el.closest(this.args.field)
-                const errorEl = fieldEl ? fieldEl.querySelector(this.args.error) : null;
-
-                return FieldTypeList.fieldByType(type, el, fieldEl, errorEl);
-            });
+            this.fields[type] = Array.from(form.querySelectorAll(selector))
+                .map(el => FieldTypeList.fieldByType(type, el));
         }
 
-        element.addEventListener('submit', this.submit.bind(this))
+        form.addEventListener('submit', this.submit.bind(this))
     }
 
     validate()
@@ -54,55 +52,34 @@ class Form
         return incorrectFields.length === 0;
     }
 
-    beforeSubmit()
-    {
-        console.log('@todo start preloader')
-        this.isFormProcessed = true;
-    }
-
-    afterSubmit(call)
-    {
-        console.log('@todo stop preloader')
-        this.isFormProcessed = false;
-        return call();
-    }
-
     submit(e)
     {
         e.preventDefault();
-        if (this.isFormProcessed) return false;
+        if (this.isFormProcessed) return false
 
         if (this.validate()) {
-            this.beforeSubmit();
+            this.beforeSubmit(this)
+            this.isFormProcessed = true
 
-            const xhr = new XMLHttpRequest();
+            const xhr = new XMLHttpRequest()
+
             xhr.onreadystatechange = () => {
                 if (4 === xhr.readyState) {
-                    const response = JSON.parse(xhr.response);
-                    if (200 === xhr.status) {
-                        if ('Y' === response.SUCCESS) {
-                            return this.afterSubmit(() => this.success(response.SUCCESS_MESSAGE));
-                        }
+                    this.isFormProcessed = false
+
+                    if (200 === xhr.status && false !== this.success(JSON.parse(xhr.response))) {
+                        this.fetch().map(field => field.clearValue())
+                    } else {
+                        this.fail()
                     }
 
-                    return this.afterSubmit(() => this.error(response.ERRORS));
+                    this.afterSubmit(this);
                 }
             }
-            
-            xhr.open('POST', this.element.getAttribute('action') || './');
-            xhr.send(new FormData(this.element));
+
+            xhr.open('POST', this.form.getAttribute('action') || './');
+            xhr.send(new FormData(this.form));
         }
-    }
-
-    success(message)
-    {
-        this.fetch().map(field => field.clearValue());
-        console.log(message);
-    }
-
-    error(errors)
-    {
-        console.log(errors);
     }
 
     fetch(type)
